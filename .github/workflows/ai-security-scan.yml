@@ -1,0 +1,46 @@
+name: AI Security Scan
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  ai-security-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          # 扩大范围：包含 CodeQL 支持的所有主流编程语言
+          languages: python, javascript, typescript, java, go, cpp, csharp, ruby
+          # 扩大范围：使用最全面的查询集
+          # security-extended 包含 security-and-quality 的所有内容，外加更多实验性安全查询
+          queries: security-extended, security-and-quality
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:all"
+          upload: false
+          output: sarif-results
+
+      - name: Upload SARIF results
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: sarif-results
+          token: ${{ secrets.GITHUB_TOKEN }}
