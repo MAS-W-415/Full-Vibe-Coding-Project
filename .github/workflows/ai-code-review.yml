@@ -18,9 +18,8 @@ jobs:
           OPENAI_API_BASE: https://open.bigmodel.cn/api/paas/v4/
           OPENAI_MODEL: glm-4.7-flash
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-        pr_agent.config: |
-          pr_reviewer:
-            num_code_suggestions: 5
-            require_score: true
-            review_type: focused
+          CONFIG: |
+            pr_reviewer:
+              num_code_suggestions: 5
+              require_score: true
+              review_type: focused
