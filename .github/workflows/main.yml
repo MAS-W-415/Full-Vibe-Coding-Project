@@ -1,0 +1,126 @@
+name: AI Standardize Commit & PR
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  ai-standardize:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install openai PyGithub
+
+      - name: AI 规范 PR 标题与 Commit 信息
+        env:
+          ZHIPU_API_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          cat > standardize_pr.py << 'EOF'
+          import os
+          import json
+          from openai import OpenAI
+          from github import Github
+
+          # 配置智谱 GLM-4.7-Flash 接口
+          client = OpenAI(
+              api_key=os.getenv("ZHIPU_API_KEY"),
+              base_url="https://open.bigmodel.cn/api/paas/v4/"
+          )
+
+          # 初始化 GitHub 客户端
+          github_client = Github(os.getenv("GITHUB_TOKEN"))
+          repo = github_client.get_repo(os.getenv("GITHUB_REPOSITORY"))
+          pr = repo.get_pull(int(os.getenv("GITHUB_PR_NUMBER")))
+
+          # 提取 PR 基础信息
+          current_pr_title = pr.title
+          current_pr_body = pr.body if pr.body else "无描述"
+          commit_list = list(pr.get_commits())
+
+          # 收集所有 Commit 信息
+          commit_messages = []
+          for commit in commit_list:
+              commit_messages.append(f"- {commit.commit.message.strip()}")
+          commit_content = "\n".join(commit_messages)
+
+          # 构建 AI 提示词，严格约束格式和规则
+          prompt = f"""
+          请根据以下 PR 信息和 Commit 记录，生成符合规范的 PR 标题和 Commit 信息。
+          严格遵守以下规则：
+          1. 格式必须为：{{type}}: {{description}}
+          2. 类型（type）仅可从以下固定选项中选择，禁止自定义：
+             bugfix、feature、docs、refactor、style、test、chore
+          3. 描述（description）使用中文，简洁清晰，不超过50个字符，准确概括变更内容
+          4. 多个 Commit 需合并提炼为一条规范的 Commit 信息
+          5. 仅输出标准JSON格式，禁止任何额外说明、解释、markdown标记，格式如下：
+             {{
+                 "pr_title": "规范后的PR标题",
+                 "standard_commit_message": "规范后的Commit信息"
+             }}
+
+          输入信息：
+          当前PR标题：{current_pr_title}
+          当前PR描述：{current_pr_body}
+          本次PR的Commit记录：
+          {commit_content}
+          """
+
+          try:
+              # 调用智谱大模型生成规范内容
+              ai_response = client.chat.completions.create(
+                  model="glm-4.7-flash",
+                  messages=[{"role": "user", "content": prompt}],
+                  temperature=0.3
+              )
+
+              # 解析AI返回结果
+              result_raw = ai_response.choices[0].message.content
+              result_raw = result_raw.replace("```json", "").replace("```", "").strip()
+              result = json.loads(result_raw)
+
+              standard_pr_title = result["pr_title"]
+              standard_commit_msg = result["standard_commit_message"]
+
+              # 打印日志，方便调试
+              print(f"✅ 规范后的PR标题：{standard_pr_title}")
+              print(f"✅ 规范后的Commit信息：{standard_commit_msg}")
+
+              # 自动更新PR标题
+              pr.edit(title=standard_pr_title)
+
+              # 在PR评论区发布规范结果和操作指引
+              comment_content = f"""### 🤖 AI 已自动完成PR信息规范
+              
+              ✅ **PR标题已自动更新为：**
+              `{standard_pr_title}`
+
+              💡 **推荐的规范Commit信息（合并PR时使用）：**
+              {standard_commit_msg}
+              """
+              pr.create_issue_comment(body=comment_content)
+
+          except Exception as e:
+              # 异常处理，在 PR 评论区提示错误
+              print(f"❌ 处理失败：{str(e)}")
+              pr.create_issue_comment(body=f"### ⚠️ AI 规范 PR 信息执行失败\n\n错误详情：{str(e)}")
+          EOF
+          
+          python standardize_pr.py
