@@ -3,12 +3,13 @@ name: AI Code Review
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  workflow_dispatch:
 
 jobs:
   ai-code-review:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5  # 已升级到 v5
         with:
           fetch-depth: 0
 
