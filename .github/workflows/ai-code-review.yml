@@ -1,0 +1,26 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  ai-code-review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: Codium-ai/pr-agent@v0.25
+        env:
+          OPENAI_KEY: ${{ secrets.ZHIPU_API_KEY }}
+          OPENAI_API_BASE: https://open.bigmodel.cn/api/paas/v4/
+          OPENAI_MODEL: glm-4.7-flash
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+        pr_agent.config: |
+          pr_reviewer:
+            num_code_suggestions: 5
+            require_score: true
+            review_type: focused
